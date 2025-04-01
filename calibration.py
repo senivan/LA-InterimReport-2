@@ -81,59 +81,6 @@ def cross_product(a, b):
         a[2] * b[0] - a[0] * b[2],
         a[0] * b[1] - a[1] * b[0]
     ]
-def solve_homogeneous_system(A):
-    m = len(A)
-    n = len(A[0])
-    
-    M = [row[:] for row in A]
-    
-    row = 0
-    for col in range(n):
-        pivot_row = None
-        max_val = 0.0
-        for r in range(row, m):
-            if abs(M[r][col]) > max_val:
-                max_val = abs(M[r][col])
-                pivot_row = r
-        if pivot_row is None or abs(M[pivot_row][col]) < 1e-12:
-            continue  
-        M[row], M[pivot_row] = M[pivot_row], M[row]
-        pivot = M[row][col]
-        M[row] = [val / pivot for val in M[row]]
-        for r in range(m):
-            if r != row:
-                factor = M[r][col]
-                M[r] = [M[r][c] - factor * M[row][c] for c in range(n)]
-        row += 1
-        if row == m:
-            break
-    x = [0.0] * n
-    x[n-1] = 1.0
-    for r in range(m):
-        pivot_col = None
-        for c in range(n):
-            if abs(M[r][c]) > 1e-12:
-                pivot_col = c
-                break
-        if pivot_col is None or pivot_col == n-1:
-            continue
-        s = 0.0
-        for j in range(pivot_col+1, n):
-            s += M[r][j] * x[j]
-        x[pivot_col] = -s
-    return x
-def solve_homogeneous_svd(A):
-    """
-    A is given as a list of lists.
-    We convert it into a NumPy array just for the SVD step,
-    then return the singular vector corresponding to the smallest singular value.
-    """
-    A_np = np.array(A, dtype=np.float64)
-    # Compute SVD: A = U * S * V^T
-    U, S, VT = np.linalg.svd(A_np)
-    # The solution is the last row of VT (or last column of V)
-    p = VT[-1, :]
-    return p.tolist()
 def normalize_points_2d(points, target=15):
     """
     Normalizes a list of 2D points so that the centroid is at the origin and 
@@ -164,30 +111,6 @@ def normalize_points_2d(points, target=15):
     ]
     return normalized, T
 
-
-def normalize_points_3d(points, target=15):
-    """
-    Normalizes a list of 3D points so that the centroid is at the origin and 
-    the average distance from the origin equals target.
-    Returns (normalized_points, T) where T is the 4x4 normalization matrix.
-    """
-    n = len(points)
-    cx = sum(p[0] for p in points) / n
-    cy = sum(p[1] for p in points) / n
-    cz = sum(p[2] for p in points) / n
-
-    shifted = [[p[0] - cx, p[1] - cy, p[2] - cz] for p in points]
-    avg_dist = sum(math.sqrt(p[0]**2 + p[1]**2 + p[2]**2) for p in shifted) / n
-    scale = target / avg_dist
-    normalized = [[scale * p[0], scale * p[1], scale * p[2]] for p in shifted]
-    
-    T = [
-        [scale,     0,     0, -scale * cx],
-        [    0, scale,     0, -scale * cy],
-        [    0,     0, scale, -scale * cz],
-        [    0,     0,     0,           1]
-    ]
-    return normalized, T
 # === End Custom Routines ===
 def identity_matrix(size):
     """Create an identity matrix of given size."""
@@ -204,10 +127,12 @@ def safe_normalize(vector, tol=1e-12):
         return vector  # or return a default vector; here we simply return it.
     return [x / vector_norm for x in vector]
 
-def eigen_decomposition(matrix, tol=1e-10, max_iterations=1000):
+def eigen_decomposition(matrix, tol=1e-15, max_iterations=100000):
     """
     Compute eigenvalues and eigenvectors using the QR algorithm.
     Returns (eigenvalues, eigenvectors) where eigenvectors are the columns of V.
+
+    DOES NOT WORK RIGHT NOW. It drifts to zero.
     """
     n = len(matrix)
     # Make a deep copy of matrix.
@@ -230,106 +155,6 @@ def eigen_decomposition(matrix, tol=1e-10, max_iterations=1000):
         eigenvectors.append(safe_normalize(col))
     return eigenvalues, eigenvectors
 
-def svd(matrix):
-    """
-    Compute the Singular Value Decomposition of a matrix using custom routines.
-    Returns U, singular_values (as a list), and V_T such that:
-        A = U * S * V^T
-    where S is constructed from the singular values.
-    """
-    m = len(matrix)
-    n = len(matrix[0])
-    
-    # Step 1: Compute A^T * A (an n x n matrix).
-    A_T = transpose(matrix)   # n x m
-    A_TA = mat_mult(A_T, matrix)  # n x n
-
-    # Step 2: Compute eigen-decomposition of A_TA to obtain V and eigenvalues.
-    eigenvalues, V = eigen_decomposition(A_TA)
-    
-    # Step 3: Sort eigenvalues (and corresponding eigenvectors) in descending order.
-    sorted_indices = sorted(range(len(eigenvalues)), key=lambda i: eigenvalues[i], reverse=True)
-    eigenvalues = [eigenvalues[i] for i in sorted_indices]
-    V = [V[i] for i in sorted_indices]  # Each v in V is a vector of length n.
-    
-    # Compute singular values (square roots of eigenvalues).
-    singular_values = [math.sqrt(max(ev, 0)) for ev in eigenvalues]
-
-    # Step 4: Compute U from A and V.
-    # For each singular value (for i in range(n)), compute:
-    #    u_i = A * v_i / sigma_i   (if sigma_i != 0)
-    # U will have as many columns as n. If m > n, we need to complete U to an m x m orthonormal basis.
-    U = []
-    for i in range(n):
-        v_i = V[i]
-        # Compute A*v_i (result is a vector of length m).
-        Av = [sum(matrix[row][k] * v_i[k] for k in range(n)) for row in range(m)]
-        sigma = singular_values[i]
-        if sigma > 1e-12:
-            u_i = [x / sigma for x in Av]
-        else:
-            # For sigma = 0, we cannot determine u_i uniquely.
-            # Here we simply set u_i to a zero vector.
-            u_i = [0.0] * m
-        U.append(u_i)
-    # At this point, U is m x n. To form a full orthonormal basis, if m > n,
-    # we complete U with additional orthonormal vectors.
-    if m > n:
-        # Using a simple Gram-Schmidt on the standard basis to fill up U.
-        # First, transpose U to have columns as computed u_i.
-        U_cols = [ [U[j][i] for j in range(m)] for i in range(n)]
-        additional = []
-        for i in range(m):
-            # Start with standard basis vector e_i.
-            e = [1.0 if j == i else 0.0 for j in range(m)]
-            # Subtract projections onto already computed columns.
-            for u in U_cols + additional:
-                proj = sum(e[k] * u[k] for k in range(m))
-                e = [e[k] - proj * u[k] for k in range(m)]
-            norm_e = norm(e)
-            if norm_e > 1e-12:
-                e = [x / norm_e for x in e]
-                additional.append(e)
-            if len(U_cols) + len(additional) == m:
-                break
-        # Append the additional columns to U_cols.
-        U_cols.extend(additional)
-        # Now transpose back to get U as an m x m matrix.
-        U = [[U_cols[j][i] for j in range(m)] for i in range(m)]
-    else:
-        # If m == n, then U is already square.
-        # Transpose the list of computed u_i (which are rows) into columns.
-        U = [[U[j][i] for j in range(n)] for i in range(m)]
-    
-    # Step 5: Build S as an m x n diagonal matrix.
-    S = [[0.0 for _ in range(n)] for _ in range(m)]
-    for i in range(min(m, n)):
-        S[i][i] = singular_values[i]
-    
-    # Step 6: Form V^T from V.
-    # Here, V is a list of n vectors of length n.
-    V_T = transpose(V)
-    
-    return U, singular_values, V_T
-
-
-
-def compose_matrix(corrsponding_points):
-    A = []
-    for (X, Y, Z), (u, v) in corrsponding_points:
-        row1 = [
-            -X, -Y, -Z, -1,
-             0,  0,  0,  0,
-             u*X, u*Y, u*Z, u
-        ]
-        row2 = [
-             0,  0,  0,  0,
-            -X, -Y, -Z, -1,
-             v*X, v*Y, v*Z, v
-        ]
-        A.append(row1)
-        A.append(row2)
-    return A
 
 def compute_homography(obj_pts, img_pts):
     """
@@ -348,7 +173,11 @@ def compute_homography(obj_pts, img_pts):
         A.append([0, 0, 0, -X, -Y, -1, v*X, v*Y, v])
     A = np.array(A, dtype=np.float64)
     # Use NumPy SVD on the 2N x 9 matrix A.
-    U, S, VT = np.linalg.svd(A)
+    # U, S, VT = np.linalg.svd(A)
+    U, S, VT = svd_custom(A)
+    S = np.array(S, dtype=np.float64)
+    S = np.diag(S)
+    VT = np.array(VT, dtype=np.float64)
     h = VT[-1, :]
     H = h.reshape(3,3)
     # Normalize so that H[2,2] = 1
@@ -356,46 +185,6 @@ def compute_homography(obj_pts, img_pts):
         H = H / H[2,2]
     return H
 
-def compute_vij(H, i, j):
-    """
-    For a given homography H (3x3 NumPy array), compute the vector v_ij as defined in Zhang’s paper.
-    Here we follow:
-      v_ij = [ h_i1*h_j1,
-               h_i1*h_j2 + h_i2*h_j1,
-               h_i2*h_j2,
-               h_i3*h_j1 + h_i1*h_j3,
-               h_i3*h_j2 + h_i2*h_j3,
-               h_i3*h_j3 ]
-    where h_i denotes the i-th row of H.
-    Note: Many formulations use the columns; here we assume H's columns are h1, h2, h3.
-    """
-    # We choose to extract columns for consistency:
-    h1 = H[:,0]
-    h2 = H[:,1]
-    h3 = H[:,2]
-    if i == 1 and j == 2:
-        return np.array([h1[0]*h2[0],
-                         h1[0]*h2[1] + h1[1]*h2[0],
-                         h1[1]*h2[1],
-                         h1[2]*h2[0] + h1[0]*h2[2],
-                         h1[2]*h2[1] + h1[1]*h2[2],
-                         h1[2]*h2[2]], dtype=np.float64)
-    elif i == 1 and j == 1:
-        return np.array([h1[0]*h1[0],
-                         h1[0]*h1[1] + h1[1]*h1[0],
-                         h1[1]*h1[1],
-                         h1[2]*h1[0] + h1[0]*h1[2],
-                         h1[2]*h1[1] + h1[1]*h1[2],
-                         h1[2]*h1[2]], dtype=np.float64)
-    elif i == 2 and j == 2:
-        return np.array([h2[0]*h2[0],
-                         h2[0]*h2[1] + h2[1]*h2[0],
-                         h2[1]*h2[1],
-                         h2[2]*h2[0] + h2[0]*h2[2],
-                         h2[2]*h2[1] + h2[1]*h2[2],
-                         h2[2]*h2[2]], dtype=np.float64)
-    else:
-        raise ValueError("Unsupported indices in compute_vij")
 
 # ---------------------------
 # Multi-Image Calibration Function
@@ -497,7 +286,10 @@ def multi_image_calibration(calib_dir, board_size, square_size):
         V.append(v11 - v22)
     V = np.array(V, dtype=np.float64)
     # Solve V * b = 0 using SVD.
-    U, S, VT = np.linalg.svd(V)
+    U, S, VT = svd_custom(V)
+    S = np.array(S, dtype=np.float64)
+    S = np.diag(S)
+    VT = np.array(VT, dtype=np.float64)
     b = VT[-1, :]  # solution corresponding to smallest singular value.
     # b corresponds to the symmetric matrix B = [B11, B12, B22, B13, B23, B33]
     B11, B12, B22, B13, B23, B33 = b
@@ -506,9 +298,13 @@ def multi_image_calibration(calib_dir, board_size, square_size):
     lambda_val = B33 - (B13**2 + v0*(B12*B13 - B11*B23)) / B11
     if lambda_val < 0:
         print("Negative lambda encountered. Calibration failed.")
-        return None, None
+        lambda_val = 0.000000001
     alpha = math.sqrt(lambda_val / B11)
-    beta  = math.sqrt(lambda_val * B11 / (B11*B22 - B12**2))
+    if (B22 - B12**2 / B11) < 0:
+        print("Negative value encountered in beta calculation. Calibration failed.")
+        beta = alpha
+    else:
+        beta  = math.sqrt(lambda_val * B11 / (B11*B22 - B12**2))
     gamma = -B12 * alpha**2 * beta / lambda_val
     u0 = gamma * v0 / beta - B13 * alpha**2 / lambda_val
     # Build the intrinsic matrix K.
@@ -547,6 +343,38 @@ def multi_image_calibration(calib_dir, board_size, square_size):
         extrinsics.append((R, t))
     return K, extrinsics
 
+def svd_custom(A):
+    """
+    Compute the Singular Value Decomposition of matrix A.
+    Returns U, singular values (as a 1D array), and V^T such that:
+      A = U * diag(s) * V^T
+    This routine uses the relation A^T A = V * diag(s^2) * V^T and computes U as:
+      U = A * V * diag(1/s)
+    """
+    A = np.array(A, dtype=float)
+    m, n = A.shape
+    # Compute A^T A (symmetric n x n matrix)
+    AtA = np.dot(A.T, A)
+    # eigenvals, V = eigen_decomposition(AtA)
+    eigenvals, V = np.linalg.eig(AtA)
+    V = np.array(V, dtype=float)
+    eigenvals = np.array(eigenvals, dtype=float)
+    # Sort eigenvalues and corresponding eigenvectors
+    idx = np.argsort(eigenvals)[::-1]
+    eigenvals = eigenvals[idx]
+    V = V[:, idx]
+    # Singular values are the square roots of eigenvalues (clipping at 0 for safety)
+    singular_vals = np.sqrt(np.maximum(eigenvals, 0))
+    
+    # Compute U = A * V * diag(1/s)
+    U = np.dot(A, V)
+    for i in range(len(singular_vals)):
+        if singular_vals[i] > 1e-12:
+            U[:, i] /= singular_vals[i]
+        else:
+            U[:, i] = 0.0
+    return U, singular_vals, transpose(V)
+
 def main():
     # -- Load calibration checkboard images -- #
     calib_dir = "calibration_images"  # Directory with calibration images
@@ -555,7 +383,6 @@ def main():
     K, extrinsics = multi_image_calibration(calib_dir, board_size, square_size)
     if K is None or extrinsics is None:
         print("Calibration failed.")
-        return
     
     print("Extrinsics")
     for i, (R, t) in enumerate(extrinsics):
@@ -565,23 +392,7 @@ def main():
         print("Translation Vector t:")
         print(t)
 
-    A = [
-        [1, 2, 3],
-        [4, 5, 6],
-        [7, 8, 9]
-    ]
-    U, S, V_T = svd(A)
-    U = np.array(U)
-    S = np.array(S)
-    V_T = np.array(V_T)
-    # U, S, V_T = np.linalg.svd(A)
-    # print("U:", U)
-    # print("Singular Values:", S)
-    # print("V^T:", V_T)
-
-    # try to multiply U, S, V_T to get back the original matrix
-    recontructed_A = np.dot(np.dot(U, np.diag(S)), V_T)
-    print("Reconstructed A:", recontructed_A)
+    
 
 if __name__ == "__main__":
     main()
