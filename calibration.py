@@ -377,8 +377,8 @@ def svd_custom(A):
 
 def main():
     # -- Load calibration checkboard images -- #
-    calib_dir = "calibration_images"  # Directory with calibration images
-    board_size = (11, 7)  # Number of inner corners in the chessboard pattern
+    calib_dir = "prod_calib"  # Directory with calibration images
+    board_size = (8, 6)  # Number of inner corners in the chessboard pattern
     square_size = 0.030  # Size of a square in meters (e.g., 2.5 cm)
     K, extrinsics = multi_image_calibration(calib_dir, board_size, square_size)
     if K is None or extrinsics is None:
