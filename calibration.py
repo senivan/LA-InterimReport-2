@@ -350,34 +350,49 @@ def power_iteration(A, num_iter=1000, eps=1e-12):
         v /= np.linalg.norm(v) + eps
     return v / np.linalg.norm(v)
 
-def svd_custom(A):
+def svd_custom(A, num_iter=1000, eps=1e-12):
     """
-    Compute the Singular Value Decomposition of matrix A.
-    Returns U, singular values (as a 1D array), and V^T such that:
-      A = U * diag(s) * V^T
-    This routine uses the relation A^T A = V * diag(s^2) * V^T and computes U as:
-      U = A * V * diag(1/s)
+    Compute the Singular Value Decomposition of matrix A using power iteration 
+    and deflation to compute the eigenvalues and eigenvectors of A^T A.
+
+    Returns:
+      U, singular values (as a 1D array), and V^T such that:
+          A = U * diag(s) * V^T
     """
     A = np.array(A, dtype=float)
     m, n = A.shape
     # Compute A^T A (symmetric n x n matrix)
     AtA = np.dot(A.T, A)
-    # eigenvals, V = eigen_decomposition(AtA)
-    # eigenvals, V = np.linalg.eig(AtA)
-    eigenvals, V = power_iteration(AtA)
-    V = np.array(V, dtype=float)
+    
+    # Use power iteration with deflation to compute eigenpairs of AtA.
+    M = AtA.copy()
+    eigenvals = []
+    eigenvecs = []
+    for _ in range(n):
+        # Compute dominant eigenvector of current matrix M.
+        v = power_iteration(M, num_iter=num_iter, eps=eps)
+        # Compute the corresponding eigenvalue using Rayleigh quotient.
+        eigen_val = np.dot(v, np.dot(M, v))
+        eigenvals.append(eigen_val)
+        eigenvecs.append(v)
+        # Deflate: subtract the rank-1 component.
+        M = M - eigen_val * np.outer(v, v)
+    
     eigenvals = np.array(eigenvals, dtype=float)
-    # Sort eigenvalues and corresponding eigenvectors
+    V = np.array(eigenvecs, dtype=float).T  # each column is an eigenvector
+
+    # Sort eigenvalues and corresponding eigenvectors in descending order.
     idx = np.argsort(eigenvals)[::-1]
     eigenvals = eigenvals[idx]
     V = V[:, idx]
-    # Singular values are the square roots of eigenvalues (clipping at 0 for safety)
+
+    # Compute singular values as the square roots of the eigenvalues (clip negatives).
     singular_vals = np.sqrt(np.maximum(eigenvals, 0))
     
-    # Compute U = A * V * diag(1/s)
+    # Compute U from A, V, and singular values.
     U = np.dot(A, V)
     for i in range(len(singular_vals)):
-        if singular_vals[i] > 1e-12:
+        if singular_vals[i] > eps:
             U[:, i] /= singular_vals[i]
         else:
             U[:, i] = 0.0
