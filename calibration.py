@@ -343,6 +343,13 @@ def multi_image_calibration(calib_dir, board_size, square_size):
         extrinsics.append((R, t))
     return K, extrinsics
 
+def power_iteration(A, num_iter=1000, eps=1e-12):
+    v = np.random.randn(A.shape[1])
+    for _ in range(num_iter):
+        v = A @ v
+        v /= np.linalg.norm(v) + eps
+    return v / np.linalg.norm(v)
+
 def svd_custom(A):
     """
     Compute the Singular Value Decomposition of matrix A.
@@ -356,7 +363,8 @@ def svd_custom(A):
     # Compute A^T A (symmetric n x n matrix)
     AtA = np.dot(A.T, A)
     # eigenvals, V = eigen_decomposition(AtA)
-    eigenvals, V = np.linalg.eig(AtA)
+    # eigenvals, V = np.linalg.eig(AtA)
+    eigenvals, V = power_iteration(AtA)
     V = np.array(V, dtype=float)
     eigenvals = np.array(eigenvals, dtype=float)
     # Sort eigenvalues and corresponding eigenvectors
