@@ -299,7 +299,14 @@ def multi_image_calibration(calib_dir, board_size, square_size):
     if lambda_val < 0:
         print("Negative lambda encountered. Calibration failed.")
         lambda_val = 0.000000001
-    alpha = math.sqrt(lambda_val / B11)
+    if abs(B11) < 1e-12:
+        print("B11 is nearly zero. Calibration may be invalid. Setting B11 to a small value.")
+        B11 = 1e-9
+    if lambda_val / B11 < 0:
+        print("Invalid value for lambda_val / B11. Calibration failed.")
+        alpha = 0  # Set alpha to 0 or handle the failure case appropriately.
+    else:
+        alpha = math.sqrt(lambda_val / B11)
     if (B22 - B12**2 / B11) < 0:
         print("Negative value encountered in beta calculation. Calibration failed.")
         beta = alpha
