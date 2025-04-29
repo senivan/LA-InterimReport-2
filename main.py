@@ -43,13 +43,13 @@ def get_middlebury_calibration(img_shape):
 
 
 if __name__ == "__main__":
-    K, extrinsics = calibration.multi_image_calibration("prod_calib", (8, 6), 0.025)
+    # K, extrinsics = calibration.multi_image_calibration("prod_calib", (8, 6), 0.025)
     # K, extrinsics = get_middlebury_calibration((480, 640))
     # -- Load stereo images -- #
-    imgL = cv2.imread("prod_left.jpg", cv2.IMREAD_GRAYSCALE)
-    imgR = cv2.imread("prod_right.jpg", cv2.IMREAD_GRAYSCALE)
+    imgL = cv2.imread("left.png", cv2.IMREAD_GRAYSCALE)
+    imgR = cv2.imread("right.png", cv2.IMREAD_GRAYSCALE)
 
-    # K, extrinsics = get_middlebury_calibration(imgL.shape)
+    K, extrinsics = get_middlebury_calibration(imgL.shape)
     
     # Ensure images are loaded
     if imgL is None or imgR is None:
@@ -110,7 +110,7 @@ if __name__ == "__main__":
     plt.show()
 
     stereo = cv2.StereoSGBM_create(numDisparities=16*16, 
-                                   blockSize=10,
+                                   blockSize=5,
                                    P1 = 8*3*5**2,
                                    P2 = 32*3*5**2,
                                    disp12MaxDiff=1,
@@ -140,7 +140,7 @@ if __name__ == "__main__":
     depth_map = np.zeros_like(disparity_depth)
     depth_map[valid_mask] = (f * B) / disparity_depth[valid_mask]
     depth_map[depth_map > 5.0] = 5.0
-    # depth_map[depth_map < 0.1] = 0
+    depth_map[depth_map < 0.1] = 0
 
     # Normalize depth for visualization
     depth_map = cv2.normalize(depth_map, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
